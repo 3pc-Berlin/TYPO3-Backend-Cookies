@@ -215,7 +215,8 @@ class BackendHook implements SingletonInterface
     protected function getAllDomains()
     {
         $domains = [];
-        $rows = BackendUtility::getRecordsByField('sys_domain', 'tx_becookies_login', 1, 'redirectTo="" AND hidden = 0');
+        $rows = BackendUtility::getRecordsByField('sys_domain', 'tx_becookies_login', 1,
+            ' AND redirectTo="" AND hidden = 0');
 
         if (is_array($rows)) {
             foreach ($rows as $row) {
