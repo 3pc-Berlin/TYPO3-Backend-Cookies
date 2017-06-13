@@ -20,6 +20,7 @@ namespace AOE\BeCookies\Domain\Repository;
  */
 
 use Aoe\Becookies\Domain\Model\Request;
+use TYPO3\CMS\Core\Database\DatabaseConnection;
 use TYPO3\CMS\Core\SingletonInterface;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 
@@ -40,21 +41,15 @@ class RequestRepository implements SingletonInterface
     const TABLE = 'tx_becookies_request';
 
     /**
-     * @var \TYPO3\CMS\Core\Database\Connection
+     * @var DatabaseConnection
      */
     protected $connection;
-
-    /**
-     * @var \TYPO3\CMS\Core\Database\ConnectionPool
-     * @inject
-     */
-    private $connectionPool;
 
     /**
      * Initializes class instance.
      */
     public function initializeObject() {
-        $this->connection = $this->connectionPool->getConnectionForTable(self::TABLE);
+        $this->connection = $GLOBALS['TYPO3_DB'];
     }
 
     /*
@@ -76,11 +71,8 @@ class RequestRepository implements SingletonInterface
             'tstamp'  => is_integer($request->getTimeStamp()) ? $request->getTimeStamp() : $GLOBALS['EXEC_TIME'],
         ];
 
-        $queryBuilder = $this->connection->createQueryBuilder();
-        $queryBuilder->insert(self::TABLE)->values($fields);
-        $queryBuilder->execute();
-
-        return $this->connection->lastInsertId(self::TABLE);
+        $this->connection->exec_INSERTquery(self::TABLE, $fields);
+        return $this->connection->sql_insert_id();
     }
 
     /**
@@ -92,13 +84,7 @@ class RequestRepository implements SingletonInterface
     public function remove(Request $request)
     {
         if (is_integer($request->getIdentifier())) {
-            $queryBuilder = $this->connection->createQueryBuilder();
-            $queryBuilder
-                ->delete(self::TABLE)
-                ->where($queryBuilder->expr()->eq(
-                    'uid', $queryBuilder->createNamedParameter($request->getIdentifier(), \PDO::PARAM_INT)
-                ))
-                ->execute();
+            $this->connection->exec_DELETEquery(self::TABLE, 'uid=' . $request->getIdentifier());
         }
     }
 
@@ -112,22 +98,16 @@ class RequestRepository implements SingletonInterface
     {
         $request = null;
 
-        $queryBuilder = $this->connection->createQueryBuilder();
-        $statement = $queryBuilder
-            ->select('*')
-            ->from(self::TABLE)
-            ->where($queryBuilder->expr()->eq('uid', $queryBuilder->createNamedParameter($identifier, \PDO::PARAM_INT)))
-            ->execute();
-
-        while ($rows = $statement->fetch()) {
+        $rows = $this->connection->exec_SELECTgetRows('*', self::TABLE, 'uid=' . (int)$identifier);
+        if (count($rows)) {
             /** @var Request $request */
             $request = GeneralUtility::makeInstance(
                 Request::class,
-                $rows['beuser'],
-                $rows['session'],
-                $rows['domain'],
-                $rows['uid'],
-                $rows['tstamp']
+                $rows[0]['beuser'],
+                $rows[0]['session'],
+                $rows[0]['domain'],
+                $rows[0]['uid'],
+                $rows[0]['tstamp']
             );
         }
 
@@ -143,18 +123,11 @@ class RequestRepository implements SingletonInterface
      */
     public function purge($expiresAfter)
     {
-        $expiresAfter = intval($expiresAfter);
+        $expiresAfter = (int)$expiresAfter;
 
         if ($expiresAfter <= 0) {
             throw new \LogicException('Elements cannot expire immediately or in the past');
         }
-
-        $queryBuilder = $this->connection->createQueryBuilder();
-        $queryBuilder
-            ->delete(self::TABLE)
-            ->where($queryBuilder->expr()->lt(
-                'tstamp', $queryBuilder->createNamedParameter(($GLOBALS['EXEC_TIME'] - $expiresAfter), \PDO::PARAM_INT)
-            ))
-            ->execute();
+        $this->connection->exec_DELETEquery(self::TABLE, 'tstamp < ' . ($GLOBALS['EXEC_TIME'] - $expiresAfter));
     }
 }
